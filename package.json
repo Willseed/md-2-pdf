@@ -4,6 +4,9 @@
   "private": true,
   "description": "Node.js markdown to PDF conversion script for Copilot skill usage.",
   "type": "commonjs",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "convert": "tsx scripts/md_to_pdf.ts",
     "lint": "eslint .",

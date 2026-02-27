@@ -4,7 +4,7 @@ Convert Markdown files to PDF with a Node.js + TypeScript CLI script.
 
 ## Prerequisites
 
-- Node.js 18+ (recommended)
+- Node.js 24+ (LTS)
 - npm
 
 ## Install
