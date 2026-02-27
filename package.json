@@ -1,0 +1,26 @@
+{
+  "name": "md-to-pdf-skill",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Node.js markdown to PDF conversion script for Copilot skill usage.",
+  "type": "commonjs",
+  "scripts": {
+    "convert": "tsx scripts/md_to_pdf.ts",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "build": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "pdfkit": "^0.17.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.3.2",
+    "eslint": "^10.0.2",
+    "globals": "^17.3.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1"
+  }
+}
