@@ -8,6 +8,7 @@ interface CliArgs {
 
 interface FsModule {
   createWriteStream(filePath: string): unknown;
+  existsSync(filePath: string): boolean;
 }
 
 interface FsPromisesModule {
@@ -66,6 +67,7 @@ const HELP_TEXT =
   "  -i, --input   Input markdown file path (required)\n" +
   "  -o, --output  Output pdf file path (optional)\n" +
   "  -h, --help    Show this help message";
+const CJK_CHARACTER_REGEX = /[\u3000-\u303f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
 
 function printHelp(): void {
   console.log(HELP_TEXT);
@@ -112,7 +114,41 @@ function stripInlineMarkdown(text: string): string {
     .replace(/~~([^~]+)~~/g, "$1");
 }
 
-function renderMarkdownToPdf(doc: PdfDocument, markdown: string): void {
+function resolveCjkFontPath(): string | null {
+  const fontCandidates =
+    process.platform === "darwin"
+      ? [
+          "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+          "/Library/Fonts/Arial Unicode.ttf",
+        ]
+      : [
+          "/usr/share/fonts/opentype/noto/NotoSansCJKtc-Regular.otf",
+          "/usr/share/fonts/opentype/noto/NotoSerifCJKtc-Regular.otf",
+          "/usr/share/fonts/opentype/noto/NotoSansTC-Regular.otf",
+          "/usr/share/fonts/truetype/noto/NotoSansTC-Regular.ttf",
+          "/usr/share/fonts/truetype/noto/NotoSansSC-Regular.ttf",
+          "/usr/share/fonts/truetype/arphic/uming.ttf",
+          "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttf",
+        ];
+
+  for (const fontPath of fontCandidates) {
+    if (fs.existsSync(fontPath)) {
+      return fontPath;
+    }
+  }
+
+  return null;
+}
+
+function resolveFontForText(defaultFont: string, text: string, cjkFontPath: string | null): string {
+  if (!cjkFontPath || !CJK_CHARACTER_REGEX.test(text)) {
+    return defaultFont;
+  }
+
+  return cjkFontPath;
+}
+
+function renderMarkdownToPdf(doc: PdfDocument, markdown: string, cjkFontPath: string | null): void {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   let inCodeBlock = false;
 
@@ -126,7 +162,7 @@ function renderMarkdownToPdf(doc: PdfDocument, markdown: string): void {
     }
 
     if (inCodeBlock) {
-      doc.font("Courier").fontSize(10).text(line || " ");
+      doc.font(resolveFontForText("Courier", line, cjkFontPath)).fontSize(10).text(line || " ");
       continue;
     }
 
@@ -140,7 +176,9 @@ function renderMarkdownToPdf(doc: PdfDocument, markdown: string): void {
       const level = headingMatch[1].length;
       const headingText = stripInlineMarkdown(headingMatch[2]);
       const fontSize = Math.max(12, 28 - level * 2);
-      doc.font("Helvetica-Bold").fontSize(fontSize).text(headingText);
+      doc.font(resolveFontForText("Helvetica-Bold", headingText, cjkFontPath))
+        .fontSize(fontSize)
+        .text(headingText);
       doc.moveDown(0.3);
       continue;
     }
@@ -160,7 +198,7 @@ function renderMarkdownToPdf(doc: PdfDocument, markdown: string): void {
     const blockQuote = line.match(/^\s*>\s?(.*)$/);
     if (blockQuote) {
       doc
-        .font("Helvetica-Oblique")
+        .font(resolveFontForText("Helvetica-Oblique", blockQuote[1], cjkFontPath))
         .fontSize(11)
         .fillColor("#555555")
         .text(`| ${stripInlineMarkdown(blockQuote[1])}`);
@@ -171,7 +209,7 @@ function renderMarkdownToPdf(doc: PdfDocument, markdown: string): void {
     const unorderedList = line.match(/^\s*[-*+]\s+(.*)$/);
     if (unorderedList) {
       doc
-        .font("Helvetica")
+        .font(resolveFontForText("Helvetica", unorderedList[1], cjkFontPath))
         .fontSize(11)
         .text(`• ${stripInlineMarkdown(unorderedList[1])}`, { indent: 12 });
       continue;
@@ -180,7 +218,7 @@ function renderMarkdownToPdf(doc: PdfDocument, markdown: string): void {
     const orderedList = line.match(/^\s*(\d+)\.\s+(.*)$/);
     if (orderedList) {
       doc
-        .font("Helvetica")
+        .font(resolveFontForText("Helvetica", orderedList[2], cjkFontPath))
         .fontSize(11)
         .text(`${orderedList[1]}. ${stripInlineMarkdown(orderedList[2])}`, {
           indent: 12,
@@ -188,7 +226,10 @@ function renderMarkdownToPdf(doc: PdfDocument, markdown: string): void {
       continue;
     }
 
-    doc.font("Helvetica").fontSize(11).text(stripInlineMarkdown(line));
+    doc
+      .font(resolveFontForText("Helvetica", line, cjkFontPath))
+      .fontSize(11)
+      .text(stripInlineMarkdown(line));
   }
 }
 
@@ -200,7 +241,8 @@ async function convertMarkdownToPdf(inputPath: string, outputPath: string): Prom
   const stream = fs.createWriteStream(outputPath);
   doc.pipe(stream);
 
-  renderMarkdownToPdf(doc, markdown);
+  const cjkFontPath = resolveCjkFontPath();
+  renderMarkdownToPdf(doc, markdown, cjkFontPath);
   doc.end();
   await streamPromises.finished(stream);
 }
