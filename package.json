@@ -9,6 +9,7 @@
   },
   "scripts": {
     "convert": "tsx scripts/md_to_pdf.ts",
+    "verify:table-layout": "playwright test tests/table-layout.spec.js --reporter=line",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --project tsconfig.json --noEmit",
@@ -19,9 +20,11 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.58.2",
     "@types/node": "^25.3.2",
     "eslint": "^10.0.2",
     "globals": "^17.3.0",
+    "pdfjs-dist": "^5.5.207",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1"

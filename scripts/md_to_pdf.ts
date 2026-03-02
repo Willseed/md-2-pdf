@@ -44,6 +44,7 @@ interface PdfPage {
 }
 
 interface PdfDocument {
+  x: number;
   y: number;
   page: PdfPage;
   addPage(): PdfDocument;
@@ -331,6 +332,7 @@ function renderPipeTable(
   }
 
   doc.y = currentY;
+  doc.x = doc.page.margins.left;
   doc.moveDown(0.4);
 }
 

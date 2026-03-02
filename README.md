@@ -25,9 +25,16 @@ npm run convert -- --input /path/to/file.md --output /path/to/file.pdf
 - `--output` (or `-o`) is optional.
 - If `--output` is omitted, the PDF is created next to the input Markdown file.
 
+## Regression Verification
+
+Run the automated Playwright check for table layout regression:
+
+```bash
+npm run verify:table-layout
+```
+
 ## Skill Installation (skills CLI)
 
 ```bash
 npx skills add Willseed/md-2-pdf
 ```
-
