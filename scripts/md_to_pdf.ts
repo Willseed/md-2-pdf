@@ -83,6 +83,20 @@ const INLINE_TOKEN_REGEX =
   /!\[([^\]]*)\]\([^)]+\)|\[([^\]]+)\]\(([^)]+)\)|\[\^([^\]]+)\]|<(https?:\/\/[^>\s]+)>/g;
 const TABLE_SEPARATOR_CELL_REGEX = /^:?-{3,}:?$/;
 const TABLE_CELL_PADDING = 4;
+const BIG_MACHINE_PALETTE = {
+  primary: "#BD2A2E",
+  text: "#3B3936",
+  light: "#B2BEBF",
+  muted: "#889C9B",
+  accent: "#486966",
+} as const;
+const RENDER_THEME_COLORS = {
+  heading: BIG_MACHINE_PALETTE.primary,
+  bodyText: BIG_MACHINE_PALETTE.text,
+  tableBorder: BIG_MACHINE_PALETTE.light,
+  divider: BIG_MACHINE_PALETTE.muted,
+  blockQuoteText: BIG_MACHINE_PALETTE.accent,
+} as const;
 
 interface InlineSegment {
   text: string;
@@ -316,8 +330,11 @@ function renderPipeTable(
 
     for (let columnIndex = 0; columnIndex < row.length; columnIndex += 1) {
       const cellX = tableStartX + columnIndex * columnWidth;
-      doc.rect(cellX, currentY, columnWidth, rowHeight).strokeColor("#cccccc").stroke();
-      doc.strokeColor("black");
+      doc
+        .rect(cellX, currentY, columnWidth, rowHeight)
+        .strokeColor(RENDER_THEME_COLORS.tableBorder)
+        .stroke();
+      doc.strokeColor(RENDER_THEME_COLORS.bodyText);
       renderInlineText(doc, row[columnIndex], {
         defaultFont,
         fontSize,
@@ -373,6 +390,8 @@ function resolveFontForText(defaultFont: string, text: string, cjkFontPath: stri
 function renderMarkdownToPdf(doc: PdfDocument, markdown: string, cjkFontPath: string | null): void {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   let inCodeBlock = false;
+  doc.fillColor(RENDER_THEME_COLORS.bodyText);
+  doc.strokeColor(RENDER_THEME_COLORS.bodyText);
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
@@ -415,11 +434,13 @@ function renderMarkdownToPdf(doc: PdfDocument, markdown: string, cjkFontPath: st
     if (headingMatch) {
       const level = headingMatch[1].length;
       const fontSize = Math.max(12, 28 - level * 2);
+      doc.fillColor(RENDER_THEME_COLORS.heading);
       renderInlineText(doc, headingMatch[2], {
         defaultFont: "Helvetica-Bold",
         fontSize,
         cjkFontPath,
       });
+      doc.fillColor(RENDER_THEME_COLORS.bodyText);
       doc.moveDown(0.3);
       continue;
     }
@@ -429,9 +450,9 @@ function renderMarkdownToPdf(doc: PdfDocument, markdown: string, cjkFontPath: st
       doc
         .moveTo(doc.page.margins.left, y)
         .lineTo(doc.page.width - doc.page.margins.right, y)
-        .strokeColor("#cccccc")
+        .strokeColor(RENDER_THEME_COLORS.divider)
         .stroke();
-      doc.strokeColor("black");
+      doc.strokeColor(RENDER_THEME_COLORS.bodyText);
       doc.moveDown(0.6);
       continue;
     }
@@ -450,13 +471,13 @@ function renderMarkdownToPdf(doc: PdfDocument, markdown: string, cjkFontPath: st
 
     const blockQuote = line.match(/^\s*>\s?(.*)$/);
     if (blockQuote) {
-      doc.fillColor("#555555");
+      doc.fillColor(RENDER_THEME_COLORS.blockQuoteText);
       renderInlineText(doc, `| ${blockQuote[1]}`, {
         defaultFont: "Helvetica-Oblique",
         fontSize: 11,
         cjkFontPath,
       });
-      doc.fillColor("black");
+      doc.fillColor(RENDER_THEME_COLORS.bodyText);
       continue;
     }
 
