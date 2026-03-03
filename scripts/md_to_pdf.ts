@@ -387,9 +387,176 @@ function resolveFontForText(defaultFont: string, text: string, cjkFontPath: stri
   return cjkFontPath;
 }
 
+interface MarkdownLineContext {
+  doc: PdfDocument;
+  lines: string[];
+  line: string;
+  trimmed: string;
+  lineIndex: number;
+  cjkFontPath: string | null;
+}
+
+type MarkdownBlockHandler = (context: MarkdownLineContext) => number | null;
+
+function isCodeFenceLine(trimmed: string): boolean {
+  return trimmed.startsWith("```");
+}
+
+function renderCodeBlockLine(doc: PdfDocument, line: string, cjkFontPath: string | null): void {
+  doc.font(resolveFontForText("Courier", line, cjkFontPath)).fontSize(10).text(line || " ");
+}
+
+function handleBlankLineBlock(context: MarkdownLineContext): number | null {
+  if (context.trimmed) {
+    return null;
+  }
+
+  context.doc.moveDown(0.4);
+  return context.lineIndex;
+}
+
+function handlePipeTableBlock(context: MarkdownLineContext): number | null {
+  if (
+    !(
+      isPipeTableRow(context.line) &&
+      context.lineIndex + 1 < context.lines.length &&
+      isPipeTableSeparatorRow(context.lines[context.lineIndex + 1])
+    )
+  ) {
+    return null;
+  }
+
+  const headerRow = parsePipeTableRow(context.line);
+  const bodyRows: string[][] = [];
+  let tableLineIndex = context.lineIndex + 2;
+  while (tableLineIndex < context.lines.length && isPipeTableRow(context.lines[tableLineIndex])) {
+    bodyRows.push(parsePipeTableRow(context.lines[tableLineIndex]));
+    tableLineIndex += 1;
+  }
+  renderPipeTable(context.doc, headerRow, bodyRows, context.cjkFontPath);
+  return tableLineIndex - 1;
+}
+
+function handleHeadingBlock(context: MarkdownLineContext): number | null {
+  const headingMatch = context.line.match(/^(#{1,6})\s+(.*)$/);
+  if (!headingMatch) {
+    return null;
+  }
+
+  const level = headingMatch[1].length;
+  const fontSize = Math.max(12, 28 - level * 2);
+  context.doc.fillColor(RENDER_THEME_COLORS.heading);
+  renderInlineText(context.doc, headingMatch[2], {
+    defaultFont: "Helvetica-Bold",
+    fontSize,
+    cjkFontPath: context.cjkFontPath,
+  });
+  context.doc.fillColor(RENDER_THEME_COLORS.bodyText);
+  context.doc.moveDown(0.3);
+  return context.lineIndex;
+}
+
+function handleDividerBlock(context: MarkdownLineContext): number | null {
+  if (!/^(-{3,}|\*{3,}|_{3,})$/.test(context.trimmed)) {
+    return null;
+  }
+
+  const y = context.doc.y + 3;
+  context.doc
+    .moveTo(context.doc.page.margins.left, y)
+    .lineTo(context.doc.page.width - context.doc.page.margins.right, y)
+    .strokeColor(RENDER_THEME_COLORS.divider)
+    .stroke();
+  context.doc.strokeColor(RENDER_THEME_COLORS.bodyText);
+  context.doc.moveDown(0.6);
+  return context.lineIndex;
+}
+
+function handleFootnoteDefinitionBlock(context: MarkdownLineContext): number | null {
+  const footnoteDefinition = context.line.match(/^\[\^([^\]]+)\]:\s*(.*)$/);
+  if (!footnoteDefinition) {
+    return null;
+  }
+
+  const footnoteId = footnoteDefinition[1];
+  renderInlineText(context.doc, `[${footnoteId}]: ${footnoteDefinition[2]}`, {
+    defaultFont: "Helvetica",
+    fontSize: 10,
+    cjkFontPath: context.cjkFontPath,
+    destination: getFootnoteDestinationId(footnoteId),
+  });
+  return context.lineIndex;
+}
+
+function handleBlockQuoteBlock(context: MarkdownLineContext): number | null {
+  const blockQuote = context.line.match(/^\s*>\s?(.*)$/);
+  if (!blockQuote) {
+    return null;
+  }
+
+  context.doc.fillColor(RENDER_THEME_COLORS.blockQuoteText);
+  renderInlineText(context.doc, `| ${blockQuote[1]}`, {
+    defaultFont: "Helvetica-Oblique",
+    fontSize: 11,
+    cjkFontPath: context.cjkFontPath,
+  });
+  context.doc.fillColor(RENDER_THEME_COLORS.bodyText);
+  return context.lineIndex;
+}
+
+function handleUnorderedListBlock(context: MarkdownLineContext): number | null {
+  const unorderedList = context.line.match(/^\s*[-*+]\s+(.*)$/);
+  if (!unorderedList) {
+    return null;
+  }
+
+  renderInlineText(context.doc, `• ${unorderedList[1]}`, {
+    defaultFont: "Helvetica",
+    fontSize: 11,
+    cjkFontPath: context.cjkFontPath,
+    indent: 12,
+  });
+  return context.lineIndex;
+}
+
+function handleOrderedListBlock(context: MarkdownLineContext): number | null {
+  const orderedList = context.line.match(/^\s*(\d+)\.\s+(.*)$/);
+  if (!orderedList) {
+    return null;
+  }
+
+  renderInlineText(context.doc, `${orderedList[1]}. ${orderedList[2]}`, {
+    defaultFont: "Helvetica",
+    fontSize: 11,
+    cjkFontPath: context.cjkFontPath,
+    indent: 12,
+  });
+  return context.lineIndex;
+}
+
+function renderParagraphBlock(context: MarkdownLineContext): number {
+  renderInlineText(context.doc, context.line, {
+    defaultFont: "Helvetica",
+    fontSize: 11,
+    cjkFontPath: context.cjkFontPath,
+  });
+  return context.lineIndex;
+}
+
 function renderMarkdownToPdf(doc: PdfDocument, markdown: string, cjkFontPath: string | null): void {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   let inCodeBlock = false;
+  const blockHandlers: MarkdownBlockHandler[] = [
+    handleBlankLineBlock,
+    handlePipeTableBlock,
+    handleHeadingBlock,
+    handleDividerBlock,
+    handleFootnoteDefinitionBlock,
+    handleBlockQuoteBlock,
+    handleUnorderedListBlock,
+    handleOrderedListBlock,
+    renderParagraphBlock,
+  ];
   doc.fillColor(RENDER_THEME_COLORS.bodyText);
   doc.strokeColor(RENDER_THEME_COLORS.bodyText);
 
@@ -397,117 +564,25 @@ function renderMarkdownToPdf(doc: PdfDocument, markdown: string, cjkFontPath: st
     const line = lines[lineIndex];
     const trimmed = line.trim();
 
-    if (trimmed.startsWith("```")) {
+    if (isCodeFenceLine(trimmed)) {
       inCodeBlock = !inCodeBlock;
       doc.moveDown(0.25);
       continue;
     }
 
     if (inCodeBlock) {
-      doc.font(resolveFontForText("Courier", line, cjkFontPath)).fontSize(10).text(line || " ");
+      renderCodeBlockLine(doc, line, cjkFontPath);
       continue;
     }
 
-    if (!trimmed) {
-      doc.moveDown(0.4);
-      continue;
-    }
-
-    if (
-      isPipeTableRow(line) &&
-      lineIndex + 1 < lines.length &&
-      isPipeTableSeparatorRow(lines[lineIndex + 1])
-    ) {
-      const headerRow = parsePipeTableRow(line);
-      const bodyRows: string[][] = [];
-      let tableLineIndex = lineIndex + 2;
-      while (tableLineIndex < lines.length && isPipeTableRow(lines[tableLineIndex])) {
-        bodyRows.push(parsePipeTableRow(lines[tableLineIndex]));
-        tableLineIndex += 1;
+    const context: MarkdownLineContext = { doc, lines, line, trimmed, lineIndex, cjkFontPath };
+    for (const handleBlock of blockHandlers) {
+      const nextLineIndex = handleBlock(context);
+      if (nextLineIndex !== null) {
+        lineIndex = nextLineIndex;
+        break;
       }
-      renderPipeTable(doc, headerRow, bodyRows, cjkFontPath);
-      lineIndex = tableLineIndex - 1;
-      continue;
     }
-
-    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
-    if (headingMatch) {
-      const level = headingMatch[1].length;
-      const fontSize = Math.max(12, 28 - level * 2);
-      doc.fillColor(RENDER_THEME_COLORS.heading);
-      renderInlineText(doc, headingMatch[2], {
-        defaultFont: "Helvetica-Bold",
-        fontSize,
-        cjkFontPath,
-      });
-      doc.fillColor(RENDER_THEME_COLORS.bodyText);
-      doc.moveDown(0.3);
-      continue;
-    }
-
-    if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
-      const y = doc.y + 3;
-      doc
-        .moveTo(doc.page.margins.left, y)
-        .lineTo(doc.page.width - doc.page.margins.right, y)
-        .strokeColor(RENDER_THEME_COLORS.divider)
-        .stroke();
-      doc.strokeColor(RENDER_THEME_COLORS.bodyText);
-      doc.moveDown(0.6);
-      continue;
-    }
-
-    const footnoteDefinition = line.match(/^\[\^([^\]]+)\]:\s*(.*)$/);
-    if (footnoteDefinition) {
-      const footnoteId = footnoteDefinition[1];
-      renderInlineText(doc, `[${footnoteId}]: ${footnoteDefinition[2]}`, {
-        defaultFont: "Helvetica",
-        fontSize: 10,
-        cjkFontPath,
-        destination: getFootnoteDestinationId(footnoteId),
-      });
-      continue;
-    }
-
-    const blockQuote = line.match(/^\s*>\s?(.*)$/);
-    if (blockQuote) {
-      doc.fillColor(RENDER_THEME_COLORS.blockQuoteText);
-      renderInlineText(doc, `| ${blockQuote[1]}`, {
-        defaultFont: "Helvetica-Oblique",
-        fontSize: 11,
-        cjkFontPath,
-      });
-      doc.fillColor(RENDER_THEME_COLORS.bodyText);
-      continue;
-    }
-
-    const unorderedList = line.match(/^\s*[-*+]\s+(.*)$/);
-    if (unorderedList) {
-      renderInlineText(doc, `• ${unorderedList[1]}`, {
-        defaultFont: "Helvetica",
-        fontSize: 11,
-        cjkFontPath,
-        indent: 12,
-      });
-      continue;
-    }
-
-    const orderedList = line.match(/^\s*(\d+)\.\s+(.*)$/);
-    if (orderedList) {
-      renderInlineText(doc, `${orderedList[1]}. ${orderedList[2]}`, {
-        defaultFont: "Helvetica",
-        fontSize: 11,
-        cjkFontPath,
-        indent: 12,
-      });
-      continue;
-    }
-
-    renderInlineText(doc, line, {
-      defaultFont: "Helvetica",
-      fontSize: 11,
-      cjkFontPath,
-    });
   }
 }
 
